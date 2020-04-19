@@ -48,35 +48,89 @@ cap = cv2.VideoCapture('challenge_video.mp4')
 
 # print("source points", source_points)
 
-def image_processing(img, sthreshold = (100, 255), sxthreshold =(15, 255)):
-    # Undistorting the image 
-    img = undistort(img)
-    img = np.copy(img)
+
+def convertToBinary(image, color_space, threshold, channel=0):
+    '''Takes an image, converts into a colorspace,
+        applies the threshold on the channel and returns the binary version of the image'''
+    color_space = cv2.cvtColor(image, color_space)
+    req_channel = color_space[:,:,channel]
+    binary_image = np.zeros_like(req_channel)
+    binary_image[(req_channel >= threshold[0]) & (req_channel <= threshold[1])] = 1
+    return binary_image
+
+def applySobel(warpedimage, threshold, sobelType, kernelSize=3):
+    # Sobel takes input in gray
+    gray = cv2.cvtColor(warpedimage, cv2.COLOR_RGB2GRAY) 
     
-    # Converting to HLS color space and separate the L channel
-    hls = cv2.cvtColor(img, cv2.COLOR_RGB2HLS).astype(np.float)
-    lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
-    (h, l_hls, s) = cv2.split(hls)
-    (l_lab, a, b) = cv2.split(lab)
+    sobelx = cv2.Sobel(gray,cv2.CV_64F, 1, 0, ksize=kernelSize)
+    sobely = cv2.Sobel(gray,cv2.CV_64F, 0, 1, ksize=kernelSize)
+    
+    # Magnitudes in different directions
+    abs_sobelx = np.absolute(sobelx)
+    abs_sobely = np.absolute(sobely)
+    abs_sobel_xy= np.sqrt(sobelx**2 + sobely**2)
+    
+    # Direction
+    direction = np.arctan2(abs_sobely,abs_sobelx)
+    if(sobelType=='x'):
+        res = abs_sobelx
+    elif(sobelType=='y'):
+        res = abs_sobely
+    elif(sobelType=='xy'):
+        res = abs_sobel_xy
+    else:
+        res = direction
+        
+    # Normalizing the sobel image
+    img = np.uint8((res* 255)/np.max(res))# Converting back to np.uint8
+    binary_output = np.zeros_like(img)
+    binary_output[(img > threshold[0]) & (img < threshold[1])]=1
+    return binary_output
+
+
+def image_processing(img, sobel_threshold):
+    h_channel= convertToBinary(img,cv2.COLOR_RGB2HLS,[15,45],0)
+    l_channel = convertToBinary(img,cv2.COLOR_RGB2HLS,[150,255],1)
+    s_channel = convertToBinary(img,cv2.COLOR_RGB2HLS,[100,255],2)
+    
+    sobelx = applySobel(img, sobel_threshold, 'x')
+    sobelxy = applySobel(img, sobel_threshold, 'xy')
+    binary = np.zeros_like(s_channel)
+    binary[(((h_channel == 1) & (s_channel==1)) | (l_channel==1)) | ((sobelx == 1) | (sobelxy == 1))  ] = 1
+    return binary
+
+	####
+   #  img = undistort(img)
+   #  img = np.copy(img)
+   #  sthreshold = (170, 255)
+   #  sxthreshold =(20, 100)
+   #  # Converting to HLS color space and separate the L channel
+   #  hls = cv2.cvtColor(img, cv2.COLOR_RGB2HLS).astype(np.float)
+   #  gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+
+   #  lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
+   #  (h, l_hls, s) = cv2.split(hls)
+   #  (l_lab, a, b) = cv2.split(lab)
 
     
-    # calculating derivate in x direction using Sobel filter
-    sobel_x = cv2.Sobel(l_hls, cv2.CV_64F, 1, 0) 
-    absolute_sobel = np.absolute(sobel_x) 
-    scale_sobel = np.uint8(255*absolute_sobel/np.max(absolute_sobel))
+   #  # calculating derivate in x direction using Sobel filter
+   #  sobel_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0) 
+   #  absolute_sobel = np.absolute(sobel_x) 
+   #  scale_sobel = np.uint8(255*absolute_sobel/np.max(absolute_sobel))
+   #  cv2.imshow("Soblecx",sobel_x)
+
+   #  # Threshold x gradient
+   #  sx_binary = np.zeros_like(scale_sobel)
+   #  sx_binary[(scale_sobel >= sxthreshold[0]) & (scale_sobel <= sxthreshold[1])] = 1
     
-    # Threshold x gradient
-    sx_binary = np.zeros_like(scale_sobel)
-    sx_binary[(scale_sobel >= sxthreshold[0]) & (scale_sobel <= sxthreshold[1])] = 1
-    
-    # Threshold s_channel
-    sbinary = np.zeros_like(s)
-    sbinary[(s >= sthreshold[0]) & (s <= sthreshold[1])] = 1
-    #cv2.imshow('sbinary',sbinary)
-   # clr = np.dstack((np.zeros_like(sx_binary), sx_binary, sbinary)) * 255
-    img_comb = np.zeros_like(sx_binary)
-    img_comb[((sbinary==1) | (sx_binary == 1))] = 1
-    return img_comb 
+   #  # Threshold s_channel
+   #  sbinary = np.zeros_like(s)
+   #  sbinary[(s >= sthreshold[0]) & (s <= sthreshold[1])] = 1
+   #  #cv2.imshow('sbinary',sbinary)
+   # # clr = np.dstack((np.zeros_like(sx_binary), sx_binary, sbinary)) * 255
+   #  img_comb = np.zeros_like(sx_binary)
+   #  img_comb[((sbinary==1) | (sx_binary == 1))] = 1
+   #  return img_comb 
     
 
 def undistort(img):
@@ -97,8 +151,12 @@ def perspective_warp(img):
     h,w = img.shape[:2]
     # Original
     pts_src = np.float32([[550,460],[740, 460],[1280,720],[128, 720]])
+    #pts_src = np.float32([[583, 456],[686, 456],[890, 568],[444, 568]])
     #pts_src = np.float32([[530, 531], [792, 532], [1044, 692], [291, 689]])
+
     pts_dst = np.float32([[0,0],[w, 0],[w,h],[0, h]])
+    #pts_dst = np.float32([[200,200], [1000 ,200], [1000 ,700], [200 ,700]])
+
     P = cv2.getPerspectiveTransform(pts_src, pts_dst) 
     warp = cv2.warpPerspective(img, P, (img.shape[1],img.shape[0]))
     return warp
@@ -278,10 +336,11 @@ while(True):
     img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     # Calling the perspective_warp function
     warp = perspective_warp(frame)
-    cv2.imshow("Warped", warp)            #################################
+    #cv2.imshow("Warped", warp)            #################################
  
     #Performing the required image processing steps 
-    dst = image_processing(warp)
+    threshold = [20,150]
+    dst = image_processing(warp, threshold)
     
     slide_img, lanes, curve, y_vales = windows(dst)
     curve_radius = get_polynomial(dst, lanes[0],lanes[1])
@@ -309,7 +368,7 @@ while(True):
     # cv2.imshow('warp',dst*255)
     #cv2.imshow('out_img',slide_img)
     cv2.imshow('Final_Lane_Detected',img_)
-    if cv2.waitKey(30) & 0xFF == ord('q'):
+    if cv2.waitKey(0) & 0xFF == ord('q'):
         break
     
 cap.release()

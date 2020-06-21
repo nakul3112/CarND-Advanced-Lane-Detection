@@ -93,7 +93,7 @@ However, we need to take into account the meters in actual represented in the im
 
 Once, the lane pixels and turns have been detected, next step is to use inverse perspective transform to superimpose the results back to the original image. And finally, use cv2.fillPoly() function for marking/coloring the detected lane in each frame of the video. 
 
-<img src="output_images/lane_detected_1.jpg" width="400">
+<img src="output_images/lanes_detected_1.jpg" width="400">
 
 <img src="output_images/test3_final_lane.jpg" width="400">
 
@@ -110,7 +110,7 @@ Here is the complete output video.[output_video](https://drive.google.com/file/d
 
 ---
 
-### Discussion rearding problems faced:
+### 4. Discussion rearding problems faced:
 
 I faced a lot of problem in detecting the lane lines for challenge video.There is difficulty specifically in the lanes under bridge and shadow of the trees. This is because the hue(underlying) color is hard to detect with colorspaces in such case, and gradient thresholding detects the wall boundries under bridge and the walls between the lanes on highway. If one particular value of threshold works for one frame, it doesn't perform well similarly on other frames of the video where such challenging scenario might appear.
 
